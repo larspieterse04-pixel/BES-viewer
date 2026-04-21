@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <title>BES Master Viewer – Vegetatie & MAPP_UNIT (zomer)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- MapLibre GL -->
+  <link href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
+
+  <!-- Turf.js -->
+  <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{width:100%;height:100%;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    :root{
+      --primary:#0077b6;
+      --primary-soft:#e0f4ff;
+      --accent:#ffb703;
+      --accent-soft:#fff3cd;
+      --border:#d0d7de;
+      --bg-soft:#f5f7f9;
+      --bg-panel:#ffffff;
+      --text-main:#1f2933;
+      --text-muted:#6b7280;
+      --shadow-soft:0 2px 8px rgba(15,23,42,0.16);
+    }
+    body{background:linear-gradient(135deg,#fdfbfb,#ebedee);}
+    .app{
+      display:grid;
+      grid-template-rows:56px auto 42px;
+      grid-template-columns:340px auto;
+      grid-template-areas:
+        "topbar topbar"
+        "sidebar map"
+        "bottombar bottombar";
+      height:100vh;
+    }
+
+    .topbar{
+      grid-area:topbar;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:0 16px;
+      background:rgba(255,255,255,0.96);
+      border-bottom:1px solid var(--border);
+      box-shadow:0 1px 4px rgba(15,23,42,0.08);
+      backdrop-filter:blur(6px);
+      gap:12px;
+    }
+    .topbar-left,.topbar-right{display:flex;align-items:center;gap:8px}
+    .title{
+      font-weight:650;
+      font-size:16px;
+      color:var(--text-main);
+      display:flex;
+      align-items:center;
+      gap:6px;
+    }
+    .title-badge{
+      font-size:10px;
+      padding:2px 6px;
+      border-radius:999px;
+      background:var(--accent-soft);
+      color:#8a6d1f;
+      border:1px solid #ffe08a;
+    }
+    .pill{
+      padding:5px 11px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:#fff;
+      font-size:12px;
+      cursor:pointer;
+      color:var(--text-main);
+      display:flex;
+      align-items:center;
+      gap:4px;
+    }
+    .pill.active{
+      background:var(--primary-soft);
+      color:var(--primary);
+      border-color:var(--primary);
+      font-weight:500;
+    }
+    .pill-icon{font-size:13px}
+    .search-input{
+      padding:5px 10px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      font-size:12px;
+      min-width:200px;
+      color:var(--text-main);
+      background:#fff;
+    }
+    .search-input::placeholder{color:var(--text-muted)}
+
+    .sidebar{
+      grid-area:sidebar;
+      display:flex;
+      flex-direction:column;
+      border-right:1px solid var(--border);
+      background:var(--bg-soft);
+      overflow:hidden;
+    }
+    .sidebar-section{
+      padding:10px 14px;
+      border-bottom:1px solid var(--border);
+      background:var(--bg-panel);
+    }
+    .sidebar-section h3{
+      font-size:13px;
+      margin-bottom:2px;
+      font-weight:600;
+      color:var(--text-main);
+    }
+    .sidebar-section .small-label{
+      font-size:11px;
+      color:var(--text-muted);
+    }
+    .sidebar-scroll{
+      flex:1;
+      overflow-y:auto;
+      padding:10px 14px 14px;
+    }
+    .theme-group{margin-bottom:14px}
+    .theme-title{
+      font-size:12px;
+      font-weight:600;
+      margin-bottom:6px;
+      color:var(--text-main);
+      display:flex;
+      align-items:center;
+      gap:6px;
+    }
+    .theme-title span.icon{font-size:14px}
+    .layer-item{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      font-size:12px;
+      margin-bottom:3px;
+      color:var(--text-main);
+    }
+    .layer-item input[type="checkbox"]{cursor:pointer}
+    .layer-meta{
+      font-size:11px;
+      color:var(--text-muted);
+      margin-left:18px;
+      margin-bottom:6px;
+    }
+    .slider-row{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      margin:4px 0 8px 18px;
+      font-size:11px;
+      color:var(--text-muted);
+    }
+    .slider-row input[type="range"]{flex:1}
+    .upload-box{
+      margin-top:8px;
+      padding:8px;
+      border-radius:8px;
+      border:1px dashed var(--border);
+      background:linear-gradient(135deg,#fdfcfb,#e2d1f9);
+      font-size:11px;
+      color:var(--text-muted);
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      box-shadow:0 1px 4px rgba(15,23,42,0.08);
+    }
+    .upload-box strong{color:var(--text-main)}
+    .upload-box input[type="file"]{font-size:11px}
+    .tag{
+      display:inline-flex;
+      align-items:center;
+      gap:4px;
+      padding:2px 6px;
+      border-radius:999px;
+      background:rgba(255,255,255,0.8);
+      border:1px solid rgba(148,163,184,0.5);
+      font-size:10px;
+      color:var(--text-muted);
+    }
+
+    .map-container{
+      grid-area:map;
+      position:relative;
+      background:#e5e7eb;
+    }
+    #map{width:100%;height:100%}
+
+    .analysis-panel{
+      position:absolute;
+      right:14px;
+      top:14px;
+      width:300px;
+      max-height:62%;
+      background:rgba(255,255,255,0.97);
+      border-radius:10px;
+      box-shadow:var(--shadow-soft);
+      padding:10px 12px;
+      font-size:12px;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      border:1px solid var(--border);
+      backdrop-filter:blur(6px);
+    }
+    .analysis-panel h3{
+      font-size:13px;
+      font-weight:600;
+      margin-bottom:2px;
+      color:var(--text-main);
+      display:flex;
+      align-items:center;
+      gap:6px;
+    }
+    .analysis-row{
+      display:flex;
+      justify-content:space-between;
+      font-size:12px;
+      color:var(--text-main);
+    }
+    .analysis-row span:last-child{font-weight:500}
+    .analysis-panel hr{
+      border:none;
+      border-top:1px solid #e5e7eb;
+      margin:4px 0;
+    }
+    .small-label{font-size:11px;color:var(--text-muted)}
+
+    .legend-panel{
+      position:absolute;
+      left:14px;
+      bottom:14px;
+      width:270px;
+      background:rgba(255,255,255,0.97);
+      border-radius:10px;
+      box-shadow:var(--shadow-soft);
+      padding:8px 10px;
+      font-size:11px;
+      border:1px solid var(--border);
+      max-height:46%;
+      overflow-y:auto;
+      backdrop-filter:blur(6px);
+    }
+    .legend-title{
+      font-weight:600;
+      margin-bottom:4px;
+      color:var(--text-main);
+      font-size:12px;
+      display:flex;
+      align-items:center;
+      gap:6px;
+    }
+    .legend-item{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      margin-bottom:3px;
+    }
+    .legend-swatch{
+      width:14px;
+      height:14px;
+      border-radius:3px;
+      border:1px solid #cbd5e1;
+    }
+
+    #minimap{
+      position:absolute;
+      right:14px;
+      bottom:14px;
+      width:170px;
+      height:125px;
+      border-radius:8px;
+      border:1px solid var(--border);
+      overflow:hidden;
+      box-shadow:var(--shadow-soft);
+      background:#e5e7eb;
+    }
+
+    .bottombar{
+      grid-area:bottombar;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:0 16px;
+      background:rgba(255,255,255,0.96);
+      border-top:1px solid var(--border);
+      font-size:12px;
+      gap:12px;
+      backdrop-filter:blur(6px);
+    }
+    .time-slider-container{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      flex:1;
+      max-width:420px;
+    }
+    .time-slider-container input[type="range"]{flex:1}
+    .btn{
+      padding:5px 11px;
+      border-radius:6px;
+      border:1px solid var(--border);
+      background:#fff;
+      cursor:pointer;
+      font-size:12px;
+      color:var(--text-main);
+      display:inline-flex;
+      align-items:center;
+      gap:5px;
+    }
+    .btn.primary{
+      background:var(--primary);
+      color:#fff;
+      border-color:var(--primary);
+    }
+    .btn:hover{background:#f3f4f6}
+    .btn.primary:hover{background:#005b8a}
+    .coords-label{
+      font-size:11px;
+      color:var(--text-muted);
+      min-width:190px;
+      text-align:right;
+    }
+    .print-header{
+      position:absolute;
+      top:10px;
+      left:50%;
+      transform:translateX(-50%);
+      background:rgba(255,255,255,0.9);
+      padding:4px 10px;
+      border-radius:999px;
+      font-size:11px;
+      border:1px solid var(--border);
+      display:none;
+    }
+    @media print{
+      .topbar,.sidebar,.bottombar,#minimap,.analysis-panel,.legend-panel{display:none!important;}
+      .map-container{grid-area:map;width:100%;height:100%;}
+      .print-header{display:block;}
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <span class="title">
+        BES Master Viewer
+        <span class="title-badge">vegetatie • MAPP_UNIT • zomerpalet</span>
+      </span>
+      <button class="pill active" data-theme="nature"><span class="pill-icon">🌿</span>Natuur</button>
+      <button class="pill" data-theme="sites"><span class="pill-icon">📐</span>Sites</button>
+      <button class="pill" data-theme="uploads"><span class="pill-icon">📂</span>Uploads</button>
+    </div>
+    <div class="topbar-right">
+      <select id="basemap-select" class="pill">
+        <option value="summer">Zomerkaart</option>
+        <option value="positron">Licht</option>
+        <option value="dark">Donker</option>
+        <option value="satellite">Satelliet</option>
+      </select>
+      <select id="island-select" class="pill">
+        <option value="bonaire">Bonaire</option>
+        <option value="saba">Saba</option>
+        <option value="statia">Sint Eustatius</option>
+      </select>
+      <input type="text" id="search-input" class="search-input" placeholder="Zoek in attributen…" />
+    </div>
+  </div>
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <h3>Lagen & upload</h3>
+      <span class="small-label">Schakel lagen, stel transparantie in en voeg GeoJSON toe (WGS84).</span>
+      <div class="upload-box">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <strong>GeoJSON uploaden</strong>
+          <span class="tag">MAPP_UNIT kleuren</span>
+        </div>
+        <span>Gebruik WGS84 GeoJSON (.geojson / .json), bijv. je Mapshaper‑export van Saba vegetatie.</span>
+        <input type="file" id="file-input" accept=".geojson,.json" />
+        <button class="btn" id="btn-upload"><span>➕</span>Laag toevoegen</button>
+        <span id="upload-status" class="small-label"></span>
+      </div>
+    </div>
+    <div class="sidebar-scroll" id="layer-panel"></div>
+  </div>
+
+  <!-- MAP -->
+  <div class="map-container">
+    <div id="map"></div>
+    <div class="print-header" id="print-header">
+      BES Master Viewer – kaartexport met legenda & schaal
+    </div>
+
+    <div class="analysis-panel" id="analysis-panel">
+      <h3><span>🔍</span>Analyse – selectie</h3>
+      <div id="analysis-content">
+        <p class="small-label">Klik op de kaart om info over vaste lagen en geüploade vegetatie (MAPP_UNIT) te zien.</p>
+      </div>
+    </div>
+
+    <div class="legend-panel" id="legend-panel">
+      <div class="legend-title"><span>🗺️</span>Legenda (actieve lagen)</div>
+      <div id="legend-content">
+        <p class="small-label">Schakel lagen in via het linkerpaneel.</p>
+      </div>
+    </div>
+
+    <div id="minimap"></div>
+  </div>
+
+  <!-- BOTTOMBAR -->
+  <div class="bottombar">
+    <div class="time-slider-container">
+      <span class="small-label">Tijd:</span>
+      <input type="range" id="time-slider" min="2020" max="2100" step="10" value="2020" />
+      <span id="time-label">2020</span>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;">
+      <button class="btn" id="btn-download"><span>⬇️</span>Download selectie (GeoJSON)</button>
+      <button class="btn" id="btn-print"><span>🖨️</span>Print / export</button>
+      <button class="btn" id="btn-share"><span>🔗</span>Deel kaart</button>
+      <span class="coords-label" id="coords-label">Lng, Lat: –</span>
+    </div>
+  </div>
+</div>
+
+<script>
+  /* ---------- ZOMERPALETTEN & CONFIG ---------- */
+
+  const VEGETATION_COLORS = {
+    "Mangrove":"#2b9348",
+    "Cactus scrub":"#55a630",
+    "Dry forest":"#80b918",
+    "Herbaceous vegetation":"#aacc00",
+    "Coastal vegetation":"#bfd200",
+    "Evergreen woodland":"#2d6a4f",
+    "Semi-deciduous forest":"#40916c",
+    "Thorn woodland":"#74c69d",
+    "Salina vegetation":"#ffba08",
+    "Wetland vegetation":"#52b69a",
+    "Agricultural land":"#f4a261",
+    "Urban vegetation":"#adb5bd",
+    "Disturbed vegetation":"#e5989b",
+    "Open soil":"#e9c46a",
+    "Rocky vegetation":"#b08968",
+    "Shrubland":"#8ac926",
+    "Grassland":"#c5e384",
+    "Unknown":"#bdbdbd"
+  };
+
+  const SITES_COLORS = [
+    {max:5000,color:"#ade8f4",label:"0–5.000 m²"},
+    {max:20000,color:"#48cae4",label:"5.000–20.000 m²"},
+    {max:50000,color:"#0096c7",label:"20.000–50.000 m²"},
+    {max:Infinity,color:"#023e8a",label:"> 50.000 m²"}
+  ];
+
+  const MAPP_UNIT_COLORS = {};
+
+  function generateSummerColor(index) {
+    const palette = [
+      "#ffb703", "#fb8500", "#ff9e00", "#ffd166",
+      "#06d6a0", "#118ab2", "#073b4c", "#8ac926",
+      "#52b69a", "#40916c", "#2a9d8f", "#e76f51",
+      "#f4a261", "#e9c46a", "#b5e48c", "#99d98c",
+      "#76c893", "#34a0a4", "#168aad", "#1a759f"
+    ];
+    return palette[index % palette.length];
+  }
+
+  function assignColorsForMappUnits(geojson) {
+    const units = new Set();
+    geojson.features.forEach(f => {
+      const mu = f.properties?.MAPP_UNIT;
+      if (mu) units.add(mu);
+    });
+    let i = 0;
+    units.forEach(mu => {
+      if (!MAPP_UNIT_COLORS[mu]) {
+        MAPP_UNIT_COLORS[mu] = generateSummerColor(i++);
+      }
+    });
+  }
+
+  const CONFIG = {
+    themes:{
+      nature:{
+        name:"Natuur & vegetatie",
+        icon:"🌿",
+        layers:[{
+          id:"vegetation_bonaire",
+          name:"Vegetatie Bonaire (voorbeeld)",
+          description:"Voorbeeldlaag, verwacht data/vegetation_bonaire.geojson met veld 'vegetatietype'.",
+          type:"geojson",
+          source:"data/vegetation_bonaire.geojson",
+          property:"vegetatietype",
+          builtin:true
+        }]
+      },
+      sites:{
+        name:"Sites & gebieden",
+        icon:"📐",
+        layers:[{
+          id:"sites_bonaire",
+          name:"Sites Bonaire (voorbeeld)",
+          description:"Voorbeeldlaag, verwacht data/sites_bonaire.geojson met veld 'area'.",
+          type:"geojson",
+          source:"data/sites_bonaire.geojson",
+          property:"area",
+          builtin:true
+        }]
+      },
+      uploads:{
+        name:"Geüploade lagen (MAPP_UNIT)",
+        icon:"📂",
+        layers:[]
+      }
+    }
+  };
+
+  const BASEMAPS = {
+    summer:"https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+    positron:"https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+    dark:"https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+    satellite:"https://api.maptiler.com/maps/hybrid/style.json?key=SicACQUj2yzPs62gUaMb"
+  };
+
+  /* ---------- MAP INIT ---------- */
+
+  const map = new maplibregl.Map({
+    container:"map",
+    style:BASEMAPS.summer,
+    center:[-68.3,12.2],
+    zoom:8
+  });
+
+  const BES_BOUNDS=[[-70.5,10.0],[-61.5,19.0]];
+  map.fitBounds(BES_BOUNDS,{padding:40});
+
+  if (!window._controlsAdded) {
+    map.addControl(new maplibregl.NavigationControl(),"top-right");
+    map.addControl(new maplibregl.ScaleControl({maxWidth:120,unit:"metric"}),"bottom-left");
+    window._controlsAdded = true;
+  }
+
+  const minimap = new maplibregl.Map({
+    container:"minimap",
+    style:BASEMAPS.summer,
+    center:map.getCenter(),
+    zoom:map.getZoom()-3,
+    interactive:false
+  });
+
+  map.on("move",()=>{minimap.jumpTo({center:map.getCenter(),zoom:map.getZoom()-3});});
+
+  const layerPanel=document.getElementById("layer-panel");
+  const themeButtons=document.querySelectorAll(".pill[data-theme]");
+  const legendContent=document.getElementById("legend-content");
+  const analysisContent=document.getElementById("analysis-content");
+  const coordsLabel=document.getElementById("coords-label");
+  const searchInput=document.getElementById("search-input");
+  const uploadStatus=document.getElementById("upload-status");
+  const printHeader=document.getElementById("print-header");
+
+  let activeTheme="nature";
+  let activeLayers=new Set();
+  let selectedFeature=null;
+  const bufferLayerId="selection_buffer";
+
+  map.on("load",()=>{
+    map.addSource("selection_source",{type:"geojson",data:{type:"FeatureCollection",features:[]}});
+    map.addSource("hover_source",{type:"geojson",data:{type:"FeatureCollection",features:[]}});
+    map.addSource(bufferLayerId,{type:"geojson",data:{type:"FeatureCollection",features:[]}});
+    map.addLayer({id:bufferLayerId,type:"fill",source:bufferLayerId,paint:{"fill-color":"#ffdd99","fill-opacity":0.35}});
+    addHighlightLayers();
+    restoreFromURL();
+  });
+
+  function addHighlightLayers(){
+    if(!map.getLayer("selection_outline")){
+      map.addLayer({id:"selection_outline",type:"line",source:"selection_source",paint:{"line-color":"#ff6f00","line-width":3}});
+    }
+    if(!map.getLayer("hover_outline")){
+      map.addLayer({id:"hover_outline",type:"line",source:"hover_source",paint:{"line-color":"#000","line-width":2,"line-dasharray":[2,2]}});
+    }
+  }
+
+  function setHoverFeature(f){
+    const s=map.getSource("hover_source");if(!s)return;
+    s.setData({type:"FeatureCollection",features:f?[f]:[]});
+  }
+  function setSelectedFeature(f){
+    const s=map.getSource("selection_source");if(!s)return;
+    s.setData({type:"FeatureCollection",features:f?[f]:[]});
+  }
+  function setBufferGeometry(g){
+    const s=map.getSource(bufferLayerId);if(!s)return;
+    s.setData({type:"FeatureCollection",features:g?[g]:[]});
+  }
+
+  /* ---------- LAGEN ---------- */
+
+  function addVegetationLayer(layer){
+    const sid=layer.id,lid=sid+"_fill";
+    if(!map.getSource(sid)){
+      map.addSource(sid,{type:"geojson",data:layer.source});
+    }
+    if(!map.getLayer(lid)){
+      map.addLayer({
+        id:lid,type:"fill",source:sid,
+        paint:{
+          "fill-color":[
+            "match",["get",layer.property],
+            "Mangrove",VEGETATION_COLORS["Mangrove"],
+            "Cactus scrub",VEGETATION_COLORS["Cactus scrub"],
+            "Dry forest",VEGETATION_COLORS["Dry forest"],
+            "Herbaceous vegetation",VEGETATION_COLORS["Herbaceous vegetation"],
+            "Coastal vegetation",VEGETATION_COLORS["Coastal vegetation"],
+            "Evergreen woodland",VEGETATION_COLORS["Evergreen woodland"],
+            "Semi-deciduous forest",VEGETATION_COLORS["Semi-deciduous forest"],
+            "Thorn woodland",VEGETATION_COLORS["Thorn woodland"],
+            "Salina vegetation",VEGETATION_COLORS["Salina vegetation"],
+            "Wetland vegetation",VEGETATION_COLORS["Wetland vegetation"],
+            "Agricultural land",VEGETATION_COLORS["Agricultural land"],
+            "Urban vegetation",VEGETATION_COLORS["Urban vegetation"],
+            "Disturbed vegetation",VEGETATION_COLORS["Disturbed vegetation"],
+            "Open soil",VEGETATION_COLORS["Open soil"],
+            "Rocky vegetation",VEGETATION_COLORS["Rocky vegetation"],
+            "Shrubland",VEGETATION_COLORS["Shrubland"],
+            "Grassland",VEGETATION_COLORS["Grassland"],
+            VEGETATION_COLORS["Unknown"]
+          ],
+          "fill-opacity":0.75
+        }
+      });
+    }
+    map.on("mousemove",lid,e=>{map.getCanvas().style.cursor="pointer";setHoverFeature(e.features[0]);});
+    map.on("mouseleave",lid,()=>{map.getCanvas().style.cursor="";setHoverFeature(null);});
+  }
+
+  function addSitesLayer(layer){
+    const sid=layer.id,lid=sid+"_fill";
+    if(!map.getSource(sid)){
+      map.addSource(sid,{type:"geojson",data:layer.source});
+    }
+    if(!map.getLayer(lid)){
+      map.addLayer({
+        id:lid,type:"fill",source:sid,
+        paint:{
+          "fill-color":[
+            "interpolate",["linear"],["get",layer.property],
+            0,SITES_COLORS[0].color,
+            5000,SITES_COLORS[1].color,
+            20000,SITES_COLORS[2].color,
+            50000,SITES_COLORS[3].color
+          ],
+          "fill-opacity":0.75
+        }
+      });
+    }
+    map.on("mousemove",lid,e=>{map.getCanvas().style.cursor="pointer";setHoverFeature(e.features[0]);});
+    map.on("mouseleave",lid,()=>{map.getCanvas().style.cursor="";setHoverFeature(null);});
+  }
+
+  function detectGeometryType(g){
+    if(!g||!g.features||!g.features.length)return null;
+    const geom=g.features[0].geometry;return geom?geom.type:null;
+  }
+
+  function addUploadedLayerToMap(layer,geojson){
+    const sid=layer.id,lid=sid+"_layer";
+    if(!map.getSource(sid)){
+      map.addSource(sid,{type:"geojson",data:geojson});
+    }
+    const geomType=layer.geometryType;
+
+    const paintColor = [
+      "match",
+      ["get", "MAPP_UNIT"],
+      ...Object.entries(MAPP_UNIT_COLORS).flatMap(([unit, color]) => [unit, color]),
+      "#999999"
+    ];
+
+    if(geomType==="Polygon"||geomType==="MultiPolygon"){
+      map.addLayer({id:lid,type:"fill",source:sid,paint:{"fill-color":paintColor,"fill-opacity":0.78}});
+    }else if(geomType==="LineString"||geomType==="MultiLineString"){
+      map.addLayer({id:lid,type:"line",source:sid,paint:{"line-color":"#999999","line-width":2}});
+    }else if(geomType==="Point"||geomType==="MultiPoint"){
+      map.addLayer({
+        id:lid,type:"circle",source:sid,
+        paint:{
+          "circle-radius":5,
+          "circle-color":"#999999",
+          "circle-stroke-color":"#fff",
+          "circle-stroke-width":1
+        }
+      });
+    }
+
+    map.on("mousemove",lid,e=>{
+      map.getCanvas().style.cursor="pointer";
+      setHoverFeature(e.features[0]);
+      const f=e.features[0];
+      const mu=f.properties.MAPP_UNIT || "Onbekend";
+      map.getCanvas().title=`MAPP_UNIT: ${mu}`;
+    });
+    map.on("mouseleave",lid,()=>{
+      map.getCanvas().style.cursor="";
+      map.getCanvas().title="";
+      setHoverFeature(null);
+    });
+  }
+
+  function removeLayerById(id){
+    const fid=id+"_fill",gid=id+"_layer";
+    if(map.getLayer(fid))map.removeLayer(fid);
+    if(map.getLayer(gid))map.removeLayer(gid);
+    if(map.getSource(id))map.removeSource(id);
+  }
+
+  /* ---------- UI: LAYER PANEL & LEGEND ---------- */
+
+  function renderLayerPanel(){
+    const theme=CONFIG.themes[activeTheme];
+    layerPanel.innerHTML="";
+    const t=document.createElement("div");
+    t.className="theme-group";
+    t.innerHTML=`<div class="theme-title"><span class="icon">${theme.icon}</span>${theme.name}</div>`;
+    layerPanel.appendChild(t);
+
+    theme.layers.forEach(layer=>{
+      const item=document.createElement("div");
+      item.className="layer-item";
+
+      const cb=document.createElement("input");
+      cb.type="checkbox";cb.checked=activeLayers.has(layer.id);
+      cb.addEventListener("change",()=>{
+        if(cb.checked){
+          activeLayers.add(layer.id);
+          if(layer.builtin&&layer.id==="vegetation_bonaire")addVegetationLayer(layer);
+          else if(layer.builtin&&layer.id==="sites_bonaire")addSitesLayer(layer);
+          else if(!layer.builtin&&layer._geojson)addUploadedLayerToMap(layer,layer._geojson);
+        }else{
+          activeLayers.delete(layer.id);
+          removeLayerById(layer.id);
+        }
+        updateLegend();
+      });
+
+      const label=document.createElement("span");
+      label.textContent=layer.name;
+
+      const removeBtn = document.createElement("button");
+      removeBtn.textContent = "🗑️";
+      removeBtn.style.cssText = `
+        border:none;
+        background:none;
+        cursor:pointer;
+        font-size:14px;
+        margin-left:auto;
+      `;
+      removeBtn.onclick = () => {
+        activeLayers.delete(layer.id);
+        removeLayerById(layer.id);
+        if (!layer.builtin) {
+          CONFIG.themes.uploads.layers = CONFIG.themes.uploads.layers.filter(l => l.id !== layer.id);
+        }
+        renderLayerPanel();
+        updateLegend();
+      };
+
+      item.appendChild(cb);
+      item.appendChild(label);
+      item.appendChild(removeBtn);
+      layerPanel.appendChild(item);
+
+      const meta=document.createElement("div");
+      meta.className="layer-meta";
+      meta.textContent=layer.description||(layer.builtin?"":"Geüploade vegetatielaag – gekleurd op MAPP_UNIT (zomerpalet).");
+      layerPanel.appendChild(meta);
+
+      const sliderRow=document.createElement("div");
+      sliderRow.className="slider-row";
+      sliderRow.innerHTML=`<span>Transparantie</span><input type="range" min="0" max="100" value="30" data-layer="${layer.id}" />`;
+      const slider=sliderRow.querySelector("input");
+      slider.addEventListener("input",()=>{
+        const fid=layer.id+"_fill",gid=layer.id+"_layer";
+        const op=1-slider.value/100;
+        if(map.getLayer(fid))map.setPaintProperty(fid,"fill-opacity",op);
+        if(map.getLayer(gid)){
+          const t=map.getLayer(gid).type;
+          if(t==="fill")map.setPaintProperty(gid,"fill-opacity",op);
+          else if(t==="line")map.setPaintProperty(gid,"line-opacity",op);
+          else if(t==="circle")map.setPaintProperty(gid,"circle-opacity",op);
+        }
+      });
+      layerPanel.appendChild(sliderRow);
+    });
+    updateLegend();
+  }
+
+  function updateLegend(){
+    const active=Array.from(activeLayers);
+    const items=[];
+
+    if(active.includes("vegetation_bonaire")){
+      items.push(`<div class="legend-title">🌿 Vegetatie (voorbeeld)</div>`);
+      Object.entries(VEGETATION_COLORS).sort(([a],[b])=>a.localeCompare(b)).forEach(([t,c])=>{
+        items.push(`<div class="legend-item"><div class="legend-swatch" style="background:${c};"></div><span>${t}</span></div>`);
+      });
+    }
+
+    if(active.includes("sites_bonaire")){
+      items.push(`<div class="legend-title" style="margin-top:8px;">📐 Sites (oppervlakte)</div>`);
+      SITES_COLORS.forEach(e=>{
+        items.push(`<div class="legend-item"><div class="legend-swatch" style="background:${e.color};"></div><span>${e.label}</span></div>`);
+      });
+    }
+
+    Object.values(CONFIG.themes).forEach(theme=>{
+      theme.layers.forEach(layer=>{
+        if(!layer.builtin&&active.includes(layer.id)){
+          items.push(`<div class="legend-title" style="margin-top:8px;">📂 ${layer.name} – MAPP_UNIT</div>`);
+          Object.entries(MAPP_UNIT_COLORS).forEach(([unit,color])=>{
+            items.push(`
+              <div class="legend-item">
+                <div class="legend-swatch" style="background:${color};"></div>
+                <span>${unit}</span>
+              </div>
+            `);
+          });
+        }
+      });
+    });
+
+    legendContent.innerHTML=items.length?items.join(""):`<p class="small-label">Schakel lagen in via het linkerpaneel.</p>`;
+  }
+
+  themeButtons.forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      themeButtons.forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      activeTheme=btn.dataset.theme;
+      renderLayerPanel();
+    });
+  });
+
+  /* ---------- ANALYSE & CLICK ---------- */
+
+  map.on("click",e=>{
+    const lngLat=e.lngLat,year=document.getElementById("time-slider").value;
+    const feats=map.queryRenderedFeatures(e.point);
+    let vegInfo="Geen vegetatiepolygon actief";
+    let siteInfo="Geen sitepolygon actief";
+    let uploadInfo="Geen geüploade feature actief";
+    let bufferInfo="Geen bufferanalyse uitgevoerd";
+
+    selectedFeature=null;setSelectedFeature(null);setBufferGeometry(null);
+
+    if(feats.length){
+      selectedFeature=feats[0];setSelectedFeature(selectedFeature);
+      feats.forEach(f=>{
+        if(f.layer.id==="vegetation_bonaire_fill"){
+          vegInfo=f.properties["vegetatietype"]||"Onbekend";
+        }
+        if(f.layer.id==="sites_bonaire_fill"){
+          const area=f.properties["area"];
+          siteInfo=(area!=null)?(area/10000).toFixed(2)+" ha":"area onbekend";
+        }
+        if(f.layer.id.endsWith("_layer")){
+          const mu=f.properties["MAPP_UNIT"]||"Onbekend";
+          uploadInfo=`MAPP_UNIT: ${mu}`;
+        }
+      });
+
+      try{
+        const center=turf.point([lngLat.lng,lngLat.lat]);
+        const buf=turf.buffer(center,0.25,{units:"kilometers"});
+        setBufferGeometry(buf);
+        const vegSrc=map.getSource("vegetation_bonaire");
+        if(vegSrc&&vegSrc._data){
+          const fc=vegSrc._data,counts={};
+          fc.features.forEach(feat=>{
+            if(turf.booleanIntersects(buf,feat)){
+              const vt=feat.properties["vegetatietype"]||"Onbekend";
+              counts[vt]=(counts[vt]||0)+1;
+            }
+          });
+          const entries=Object.entries(counts);
+          if(entries.length){
+            entries.sort((a,b)=>b[1]-a[1]);
+            bufferInfo=`Dominante vegetatie in 250m buffer: ${entries[0][0]}`;
+          }else bufferInfo="Geen vegetatie in 250m buffer gevonden";
+        }else bufferInfo="Vegetatielaag niet geladen voor bufferanalyse";
+      }catch{bufferInfo="Bufferanalyse niet gelukt";}
+    }
+
+    analysisContent.innerHTML=`
+      <div class="analysis-row"><span>Locatie</span><span>${lngLat.lng.toFixed(4)}, ${lngLat.lat.toFixed(4)}</span></div>
+      <div class="analysis-row"><span>Jaar</span><span>${year}</span></div>
+      <hr />
+      <p class="small-label">Vegetatie (voorbeeldlaag)</p>
+      <div class="analysis-row"><span>Vegetatietype</span><span>${vegInfo}</span></div>
+      <hr />
+      <p class="small-label">Sites (voorbeeldlaag)</p>
+      <div class="analysis-row"><span>Oppervlakte site</span><span>${siteInfo}</span></div>
+      <hr />
+      <p class="small-label">Geüploade vegetatie (MAPP_UNIT)</p>
+      <div class="analysis-row"><span>Type</span><span>${uploadInfo}</span></div>
+      <hr />
+      <p class="small-label">Bufferanalyse (250m)</p>
+      <div class="analysis-row"><span>Resultaat</span><span>${bufferInfo}</span></div>
+    `;
+  });
+
+  /* ---------- OVERIG: BASMAP, TIJD, ZOEKEN, DOWNLOAD, PRINT, SHARE, UPLOAD ---------- */
+
+  document.getElementById("island-select").addEventListener("change",e=>{
+    const v=e.target.value;
+    if(v==="bonaire")map.flyTo({center:[-68.3,12.2],zoom:9});
+    else if(v==="saba")map.flyTo({center:[-63.24,17.63],zoom:11});
+    else if(v==="statia")map.flyTo({center:[-62.97,17.49],zoom:11});
+  });
+
+  const timeSlider=document.getElementById("time-slider");
+  const timeLabel=document.getElementById("time-label");
+  timeSlider.addEventListener("input",()=>{timeLabel.textContent=timeSlider.value;});
+
+  document.getElementById("basemap-select").addEventListener("change",e=>{
+    const v=e.target.value,styleUrl=BASEMAPS[v]||BASEMAPS.summer;
+    const center=map.getCenter(),zoom=map.getZoom();
+    map.setStyle(styleUrl);
+    map.once("styledata",()=>{
+      map.jumpTo({center,zoom});
+      if (!window._controlsAdded) {
+        map.addControl(new maplibregl.NavigationControl(),"top-right");
+        map.addControl(new maplibregl.ScaleControl({maxWidth:120,unit:"metric"}),"bottom-left");
+        window._controlsAdded = true;
+      }
+      addHighlightLayers();
+      renderLayerPanel();
+    });
+  });
+
+  map.on("mousemove",e=>{
+    coordsLabel.textContent=`Lng, Lat: ${e.lngLat.lng.toFixed(4)}, ${e.lngLat.lat.toFixed(4)}`;
+  });
+
+  searchInput.addEventListener("keydown",e=>{
+    if(e.key!=="Enter")return;
+    const q=searchInput.value.trim().toLowerCase();if(!q)return;
+    let found=null;
+    Object.values(CONFIG.themes).forEach(theme=>{
+      theme.layers.forEach(layer=>{
+        if(found||layer.builtin||!layer._geojson)return;
+        layer._geojson.features.some(f=>{
+          const props=f.properties||{};
+          const match=Object.values(props).some(v=>String(v||"").toLowerCase().includes(q));
+          if(match){found=f;return true;}
+          return false;
+        });
+      });
+    });
+    if(found&&found.geometry){
+      const bbox=turf.bbox(found);
+      map.fitBounds(bbox,{padding:40});
+      setSelectedFeature(found);
+    }
+  });
+
+  document.getElementById("btn-download").addEventListener("click",()=>{
+    if(!selectedFeature){alert("Geen selectie beschikbaar.");return;}
+    const dataStr="data:text/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(selectedFeature,null,2));
+    const a=document.createElement("a");a.href=dataStr;a.download="selected_feature.geojson";a.click();
+  });
+
+  document.getElementById("btn-print").addEventListener("click",()=>{
+    printHeader.style.display="block";
+    window.print();
+    setTimeout(()=>{printHeader.style.display="none";},500);
+  });
+
+  function generateShareURL() {
+    const center = map.getCenter();
+    const zoom = map.getZoom();
+    const base = document.getElementById("basemap-select").value;
+    const island = document.getElementById("island-select").value;
+    const layers = Array.from(activeLayers).join(",");
+
+    const params = new URLSearchParams({
+      lat: center.lat.toFixed(5),
+      lng: center.lng.toFixed(5),
+      z: zoom.toFixed(2),
+      base,
+      island,
+      layers
+    });
+
+    return window.location.origin + window.location.pathname + "?" + params.toString();
+  }
+
+  document.getElementById("btn-share").onclick = () => {
+    const url = generateShareURL();
+    navigator.clipboard.writeText(url).then(()=>{
+      alert("Link gekopieerd naar klembord!");
+    }).catch(()=>{
+      alert("Kon link niet kopiëren, kopieer hem handmatig:\n\n" + url);
+    });
+  };
+
+  document.getElementById("btn-upload").addEventListener("click",()=>{
+    const input=document.getElementById("file-input");
+    const file=input.files&&input.files[0];
+    if(!file){uploadStatus.textContent="Geen bestand geselecteerd.";return;}
+    uploadStatus.textContent="Bezig met lezen…";
+    const name=file.name.toLowerCase();
+    if(!(name.endsWith(".geojson")||name.endsWith(".json"))){
+      uploadStatus.textContent="Gebruik een .geojson of .json bestand (WGS84).";return;
+    }
+    const reader=new FileReader();
+    reader.onload=e=>{
+      try{
+        const geojson=JSON.parse(e.target.result);
+        const geomType=detectGeometryType(geojson);
+        if(!geomType){uploadStatus.textContent="Kon geometrie niet bepalen.";return;}
+
+        assignColorsForMappUnits(geojson);
+
+        const id="upload_"+Date.now();
+        const layerConfig={
+          id,
+          name:file.name,
+          description:"Geüploade vegetatielaag – gekleurd op MAPP_UNIT (zomerpalet).",
+          type:"uploaded",
+          builtin:false,
+          geometryType:geomType,
+          _geojson:geojson
+        };
+        CONFIG.themes.uploads.layers.push(layerConfig);
+        activeTheme="uploads";
+        activeLayers.add(id);
+        addUploadedLayerToMap(layerConfig,geojson);
+        renderLayerPanel();
+        uploadStatus.textContent=`Laag "${file.name}" toegevoegd (${geomType}).`;
+      }catch(err){
+        console.error(err);
+        uploadStatus.textContent="Kon GeoJSON niet lezen. Is het geldig JSON?";
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  function restoreFromURL() {
+    const p = new URLSearchParams(window.location.search);
+    if (!p.has("lat")) {
+      renderLayerPanel();
+      return;
+    }
+
+    const lat = parseFloat(p.get("lat"));
+    const lng = parseFloat(p.get("lng"));
+    const z = parseFloat(p.get("z"));
+    const base = p.get("base") || "summer";
+    const island = p.get("island") || "bonaire";
+    const layers = p.get("layers")?.split(",").filter(Boolean) || [];
+
+    document.getElementById("basemap-select").value = base;
+    document.getElementById("island-select").value = island;
+
+    map.jumpTo({center:[lng,lat],zoom:z});
+
+    layers.forEach(id => activeLayers.add(id));
+    renderLayerPanel();
+  }
+
+  renderLayerPanel();
+</script>
+</body>
+</html>
